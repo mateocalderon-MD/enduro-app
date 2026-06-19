@@ -154,3 +154,22 @@ export function resumenSemana(sesiones: SessionRow[]): ResumenSemana {
   }
   return { total: gym + moto, gym, moto, sesiones: dela.length, porDia };
 }
+
+// ---------- Simular moto: pide un circuito (objetivo=simulacion) SIN guardar el plan ----------
+export function useSimularMoto() {
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('generar-rutina', { body: { objetivo: 'simulacion' } });
+      if (error) {
+        let msg = error.message;
+        const ctx = (error as any).context;
+        if (ctx && typeof ctx.json === 'function') {
+          try { const b = await ctx.json(); if (b?.error) msg = b.error; } catch { /* sin cuerpo */ }
+        }
+        throw new Error(msg);
+      }
+      if (data?.error) throw new Error(data.error);
+      return data; // rutina con es_simulacion: true y dias[0] = circuito
+    },
+  });
+}

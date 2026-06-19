@@ -10,7 +10,8 @@ function fechaCorta(iso: string): string {
 }
 const SUBTIPOS: Record<string, string> = { tirada: 'Tirada larga', tecnico: 'Técnico', carrera: 'Carrera', libre: 'Vuelta libre' };
 
-export function Moto({ userId, onRegistrar }: { userId: string; onRegistrar: () => void }) {
+export function Moto({ userId, onRegistrar, onSimular, simulando, simularError }:
+  { userId: string; onRegistrar: () => void; onSimular: () => void; simulando: boolean; simularError: string | null }) {
   const { data: sesiones, isLoading } = useSesiones(userId);
   const salidas = (sesiones ?? []).filter((s) => s.tipo === 'moto' || s.tipo === 'simulacion');
 
@@ -20,6 +21,16 @@ export function Moto({ userId, onRegistrar }: { userId: string; onRegistrar: () 
       <h1 style={{ fontSize: fontSize.title1, fontWeight: fontWeight.bold, color: colors.ink, margin: `${space.xs}px 0 ${space.lg}px` }}>Salidas</h1>
 
       <Button variant="moto" full onClick={onRegistrar}>Registrar salida</Button>
+      <div style={{ marginTop: space.sm }}>
+        <Button variant="ghost" full onClick={onSimular} disabled={simulando}>
+          {simulando ? 'Generando circuito…' : 'No pude salir · Hacer simulacro'}
+        </Button>
+      </div>
+      {simularError && (
+        <div style={{ marginTop: space.sm, background: colors.redSoft, color: colors.redInk, fontSize: fontSize.footnote, borderRadius: radius.sm, padding: space.sm }}>
+          No se pudo generar el circuito. {simularError}
+        </div>
+      )}
 
       <div style={{ marginTop: space.lg }}>
         {isLoading ? (

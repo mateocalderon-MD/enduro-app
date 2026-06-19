@@ -9,7 +9,7 @@ import { Progreso } from './Progreso';
 import { SesionGym } from './SesionGym';
 import { RegistrarMoto } from './RegistrarMoto';
 import { Button } from './ui';
-import { usePlanWeek, useGenerarPlan, type PlanWeekRow } from '../lib/queries';
+import { usePlanWeek, useGenerarPlan, useSimularMoto, type PlanWeekRow } from '../lib/queries';
 
 export function MainTabs({ userId }: { userId: string }) {
   const [tab, setTab] = useState<Tab>('hoy');
@@ -17,6 +17,10 @@ export function MainTabs({ userId }: { userId: string }) {
   const [registrarMoto, setRegistrarMoto] = useState(false);
   const { data: planWeek, isLoading } = usePlanWeek(userId);
   const pw = planWeek as PlanWeekRow | null | undefined;
+  const simular = useSimularMoto();
+  const onSimular = () => simular.mutate(undefined, {
+    onSuccess: (rutina: any) => { if (rutina?.dias?.[0]) setSesionDia(rutina.dias[0]); },
+  });
 
   if (registrarMoto) return <RegistrarMoto userId={userId} onCerrar={() => setRegistrarMoto(false)} />;
   if (sesionDia) return <SesionGym dia={sesionDia} userId={userId} planWeekId={pw?.id ?? null} onCerrar={() => setSesionDia(null)} />;
@@ -25,7 +29,11 @@ export function MainTabs({ userId }: { userId: string }) {
 
   let contenido;
   if (isLoading) contenido = <Centro>Cargando…</Centro>;
-  else if (tab === 'moto') contenido = <Moto userId={userId} onRegistrar={() => setRegistrarMoto(true)} />;
+  else if (tab === 'moto') contenido = (
+    <Moto userId={userId} onRegistrar={() => setRegistrarMoto(true)}
+      onSimular={onSimular} simulando={simular.isPending}
+      simularError={simular.isError ? String((simular.error as Error)?.message ?? simular.error) : null} />
+  );
   else if (tab === 'progreso') contenido = <Progreso userId={userId} />;
   else if (!planWeek) contenido = <SinPlan userId={userId} />;
   else if (tab === 'hoy') contenido = <Hoy userId={userId} rutina={rutina} onEmpezar={setSesionDia} />;

@@ -42,7 +42,14 @@ export interface Ejercicio {
   slot_id: string; slot_nombre: string; variante_id: string; variante_nombre: string;
   descripcion: string; claves: string[]; dosis?: Dosis;
 }
-export interface DiaRutina { dia_numero: number; formato?: string; circuito?: Record<string, number>; ejercicios: Ejercicio[]; }
+export interface BloqueAerobico {
+  variante_id: string; variante_nombre: string; descripcion: string; claves: string[];
+  duracion_min: number; rpe: number;
+}
+export interface DiaRutina {
+  dia_numero: number; formato?: string; circuito?: Record<string, number>;
+  bloque_aerobico?: BloqueAerobico | null; ejercicios: Ejercicio[];
+}
 export interface Rutina { meta: Record<string, unknown>; dias: DiaRutina[]; advertencias: string[]; es_simulacion?: boolean; }
 export interface RutinaError { error: string; }
 
@@ -204,8 +211,51 @@ function generarGeneral(perfil: Perfil, catalogo: Catalogo, plantillas: Plantill
 }
 
 // ---------- Intención SIMULACIÓN (circuito que imita la moto, cuenta como carga de moto) ----------
-const SLOTS_SIMULACION = ['acondicionamiento', 'antebrazo', 'core', 'agilidad_coordinacion', 'reaccion', 'equilibrio'];
+// Selección moto-específica: orden de estaciones + preferencia de variante por slot.
+// Prioriza las demandas reales de andar: agarre/antebrazo (arm-pump), motor cardiovascular
+// fuerte, piernas, tracción tipo manillar, bracing de core y potencia/forcejeo.
+// Cada slot pasa por los MISMOS filtros de seguridad (equipo del usuario, nivel, impacto,
+// lesiones); si ninguna preferida pasa, cae a la mejor disponible; si no hay, se omite.
+// Estaciones del circuito: fuerza-resistencia + agarre + potencia (los "picos" de la salida).
+// El cardio NO va acá: vive en el bloque aeróbico sostenido (abajo), para no duplicar.
+const SIM_SELECCION: { slot: string; pref: string[] }[] = [
+  { slot: 'antebrazo',     pref: ['antebrazo_deadhang', 'antebrazo_toalla', 'antebrazo_farmer'] },
+  { slot: 'tren_inferior', pref: ['ti_goblet', 'ti_sentadilla_pc', 'ti_sentadilla_barra'] },
+  { slot: 'traccion',      pref: ['traccion_remo_mancuerna', 'traccion_remo_banda', 'traccion_dominadas'] },
+  { slot: 'core',          pref: ['core_plancha', 'core_pallof', 'core_rueda'] },
+  { slot: 'potencia',      pref: ['potencia_med_ball', 'potencia_box_jump', 'potencia_squat_jump', 'potencia_power_clean'] },
+];
 const RONDAS_POR_NIVEL: Record<Nivel, number> = { principiante: 2, intermedio: 3, avanzado: 4 };
+
+// Bloque aeróbico de APERTURA: continuo y sostenido, el "motor de fondo" de la salida.
+// Minutos por nivel (luego se escalan por edad). Para algo continuo preferimos máquina/bajo
+// impacto; cae según el equipo del usuario y el techo de impacto (mismos filtros de seguridad).
+const AEROBICO_MIN_POR_NIVEL: Record<Nivel, number> = { principiante: 12, intermedio: 15, avanzado: 18 };
+const AEROBICO_PREF = ['acond_remo', 'acond_bici', 'acond_carrera', 'acond_comba', 'acond_bajo_impacto_casa'];
+
+// Igual que el motor general pero con preferencia explícita de variante (el catálogo no tiene
+// dimensión de intensidad, así que la curamos acá). Mantiene todos los filtros de seguridad.
+function elegirVarianteSim(slot: Slot, perfil: Perfil, techo: Impacto, pref: string[]): Variante | null {
+  const equ = NIVEL_EQUIPO[perfil.equipo];
+  const niv = NIVEL[perfil.nivel];
+  const lesiones = perfil.lesiones || [];
+  const candidatas = slot.variantes.filter((v) =>
+    NIVEL_EQUIPO[v.nivel_equipo] <= equ &&
+    NIVEL[v.nivel_minimo] <= niv &&
+    IMPACTO[v.impacto] <= IMPACTO[techo] &&
+    !v.contraindicaciones.some((c) => lesiones.includes(c)),
+  );
+  if (candidatas.length === 0) return null;
+  for (const id of pref) {
+    const hit = candidatas.find((v) => v.id === id);
+    if (hit) return hit;
+  }
+  candidatas.sort((a, b) =>
+    (NIVEL_EQUIPO[b.nivel_equipo] - NIVEL_EQUIPO[a.nivel_equipo]) ||
+    (NIVEL[b.nivel_minimo] - NIVEL[a.nivel_minimo]),
+  );
+  return candidatas[0];
+}
 
 function generarSimulacion(perfil: Perfil, catalogo: Catalogo): Rutina {
   const advertencias: string[] = [];
@@ -217,18 +267,39 @@ function generarSimulacion(perfil: Perfil, catalogo: Catalogo): Rutina {
   const rpe = Math.min(8, banda.rpe_max); // anaeróbico pero con techo por edad
 
   const estaciones: Ejercicio[] = [];
-  for (const slotId of SLOTS_SIMULACION) {
+  for (const { slot: slotId, pref } of SIM_SELECCION) {
     const def = slotDef(catalogo, slotId);
     if (!def) continue;
     const techo = techoImpacto(def, banda, imc);
-    const v = elegirVariante(def, perfil, techo); // mismos filtros de seguridad (equipo/nivel/impacto/lesión)
+    const v = elegirVarianteSim(def, perfil, techo, pref); // mismos filtros de seguridad (equipo/nivel/impacto/lesión)
     if (!v) { advertencias.push(`[info] Estación "${def.nombre}" sin variante válida -> se omite.`); continue; }
     estaciones.push({
       slot_id: def.id, slot_nombre: def.nombre, variante_id: v.id, variante_nombre: v.nombre,
       descripcion: v.descripcion || '', claves: v.claves || [],
     });
   }
-  const duracion_min = Math.round((rondas * estaciones.length * (trabajo_seg + descanso_seg)) / 60);
+  // Bloque aeróbico de apertura (motor de fondo). Casi siempre hay variante disponible
+  // (cardio de bajo impacto en el lugar es casa/bajo y no contraindica nada).
+  const acondDef = slotDef(catalogo, 'acondicionamiento');
+  let bloque_aerobico: BloqueAerobico | null = null;
+  let aerobico_min = 0;
+  if (acondDef) {
+    const techoAcond = techoImpacto(acondDef, banda, imc);
+    const va = elegirVarianteSim(acondDef, perfil, techoAcond, AEROBICO_PREF);
+    if (va) {
+      aerobico_min = Math.max(6, Math.round(AEROBICO_MIN_POR_NIVEL[perfil.nivel] * banda.factor_volumen));
+      bloque_aerobico = {
+        variante_id: va.id, variante_nombre: va.nombre,
+        descripcion: va.descripcion || '', claves: va.claves || [],
+        duracion_min: aerobico_min, rpe: Math.min(7, banda.rpe_max),
+      };
+    } else {
+      advertencias.push('[info] Bloque aeróbico sin variante válida -> se omite.');
+    }
+  }
+
+  const circuito_min = Math.round((rondas * estaciones.length * (trabajo_seg + descanso_seg)) / 60);
+  const duracion_min = aerobico_min + circuito_min;
 
   return {
     es_simulacion: true,
@@ -236,9 +307,9 @@ function generarSimulacion(perfil: Perfil, catalogo: Catalogo): Rutina {
       disciplina: perfil.disciplina, nivel: perfil.nivel, objetivo: 'simulacion',
       cuenta_como: 'moto',
       moduladoras_aplicadas: { banda_edad: banda, imc: imc != null ? Math.round(imc * 10) / 10 : null, rpe_circuito: rpe },
-      duracion_estimada_min: duracion_min, engine_version: ENGINE_VERSION,
+      aerobico_min, circuito_min, duracion_estimada_min: duracion_min, engine_version: ENGINE_VERSION,
     },
-    dias: [{ dia_numero: 1, formato: 'circuito', circuito: { rondas, trabajo_seg, descanso_seg, rpe }, ejercicios: estaciones }],
+    dias: [{ dia_numero: 1, formato: 'circuito', bloque_aerobico, circuito: { rondas, trabajo_seg, descanso_seg, rpe }, ejercicios: estaciones }],
     advertencias,
   };
 }
