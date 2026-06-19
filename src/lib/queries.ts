@@ -173,3 +173,40 @@ export function useSimularMoto() {
     },
   });
 }
+
+// ---------- Ediciones del plan (flexibilidad: mover / swap_moto / descanso) ----------
+export interface PlanEditRow {
+  id: string; user_id: string; plan_week_id: string; fecha: string;
+  accion: 'mover' | 'descanso' | 'swap_moto' | 'agregar' | 'simular' | 'trim_volumen';
+  payload: any; created_at: string;
+}
+export interface NuevoEdit {
+  plan_week_id: string; fecha: string;
+  accion: 'mover' | 'descanso' | 'swap_moto' | 'agregar'; payload?: any;
+}
+
+export function usePlanEdits(userId: string | undefined, planWeekId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['plan_edits', planWeekId],
+    enabled: !!userId && !!planWeekId,
+    queryFn: async (): Promise<PlanEditRow[]> => {
+      const { data, error } = await supabase
+        .from('plan_edits').select('*').eq('plan_week_id', planWeekId!).order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as PlanEditRow[];
+    },
+  });
+}
+
+export function useRegistrarEdit(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (e: NuevoEdit): Promise<PlanEditRow> => {
+      const { data, error } = await supabase
+        .from('plan_edits').insert({ user_id: userId, ...e }).select().single();
+      if (error) throw error;
+      return data as PlanEditRow;
+    },
+    onSuccess: (row) => { qc.invalidateQueries({ queryKey: ['plan_edits', row.plan_week_id] }); },
+  });
+}

@@ -36,8 +36,13 @@ export function MainTabs({ userId }: { userId: string }) {
   );
   else if (tab === 'progreso') contenido = <Progreso userId={userId} />;
   else if (!planWeek) contenido = <SinPlan userId={userId} />;
-  else if (tab === 'hoy') contenido = <Hoy userId={userId} rutina={rutina} onEmpezar={setSesionDia} />;
-  else contenido = <Plan userId={userId} rutina={rutina} />;
+  else if (tab === 'hoy') contenido = (
+    <Hoy userId={userId} rutina={rutina} semanaInicio={pw!.semana_inicio} planWeekId={pw?.id ?? null}
+      onEmpezar={setSesionDia} onRegistrarMoto={() => setRegistrarMoto(true)} />
+  );
+  else contenido = (
+    <Plan userId={userId} rutina={rutina} semanaInicio={pw!.semana_inicio} planWeekId={pw?.id ?? null} onEmpezar={setSesionDia} />
+  );
 
   return (
     <div style={{ fontFamily, minHeight: '100vh', background: colors.bg, paddingBottom: 80 }}>

@@ -1,15 +1,26 @@
-// src/components/Hoy.tsx — Pestaña Hoy: qué toca hoy + carga real de la semana.
+// src/components/Hoy.tsx — Pestaña Hoy: qué toca HOY (según la semana efectiva) + carga real.
 import { colors, fontFamily, fontSize, fontWeight, space, radius } from '../lib/tokens';
 import { Button } from './ui';
 import { DiaCard } from './Plan';
-import { useSesiones, resumenSemana } from '../lib/queries';
+import { useSesiones, usePlanEdits, resumenSemana, hoyLocal } from '../lib/queries';
+import { semanaEfectiva, diaDeHoy } from '../lib/semana';
 
-export function Hoy({ userId, rutina, onEmpezar }: { userId: string; rutina: any; onEmpezar: (dia: any) => void }) {
+export function Hoy({ userId, rutina, semanaInicio, planWeekId, onEmpezar, onRegistrarMoto }: {
+  userId: string; rutina: any; semanaInicio: string; planWeekId: string | null;
+  onEmpezar: (dia: any) => void; onRegistrarMoto: () => void;
+}) {
   const { data: sesiones } = useSesiones(userId);
+  const { data: edits } = usePlanEdits(userId, planWeekId);
   const r = resumenSemana(sesiones ?? []);
-  const dias: any[] = rutina?.dias ?? [];
-  const hoy = dias[0]; // MVP: la primera sesión. En adelante, Hoy sabrá cuál te toca.
   const pctGym = r.total > 0 ? (r.gym / r.total) * 100 : 0;
+
+  const semana = semanaEfectiva({
+    semanaInicio, dias: rutina?.dias ?? [],
+    edits: (edits ?? []).map((e) => ({ fecha: e.fecha, accion: e.accion, payload: e.payload, created_at: e.created_at })),
+    sesiones: (sesiones ?? []).map((s) => ({ fecha: s.fecha, tipo: s.tipo, carga: s.carga })),
+    hoy: hoyLocal(),
+  });
+  const hoy = diaDeHoy(semana);
 
   return (
     <div style={{ fontFamily, maxWidth: 480, width: '100%', margin: '0 auto', padding: space.lg, boxSizing: 'border-box' }}>
@@ -35,16 +46,36 @@ export function Hoy({ userId, rutina, onEmpezar }: { userId: string; rutina: any
         )}
       </div>
 
-      {hoy ? (
+      {/* Qué toca hoy */}
+      {!hoy ? (
+        <Aviso>No hay plan para esta semana. Generalo desde la pestaña Plan.</Aviso>
+      ) : hoy.hecho ? (
+        <Aviso>Ya entrenaste hoy. Carga del día: <strong>{hoy.cargaHecha}</strong>. Si querés sumar algo más, está perfecto igual.</Aviso>
+      ) : hoy.tipo === 'gym' && hoy.dia ? (
         <>
-          <DiaCard dia={hoy} />
-          <Button full onClick={() => onEmpezar(hoy)}>Empezar sesión</Button>
+          <DiaCard dia={hoy.dia} />
+          <Button full onClick={() => onEmpezar(hoy.dia)}>Empezar sesión</Button>
         </>
+      ) : hoy.tipo === 'moto' || hoy.tipo === 'simulacion' ? (
+        <div style={{ background: colors.coralSoft, borderRadius: radius.lg, padding: space.lg, marginBottom: space.md, textAlign: 'center' }}>
+          <div style={{ fontSize: fontSize.headline, fontWeight: fontWeight.semibold, color: colors.coralInk, marginBottom: space.xs }}>Hoy toca moto</div>
+          <p style={{ fontSize: fontSize.subhead, color: colors.coralInk, margin: `0 0 ${space.md}px` }}>Andá a andar. Cuando vuelvas, registrá la salida para que cuente tu carga.</p>
+          <Button variant="moto" full onClick={onRegistrarMoto}>Registrar salida</Button>
+        </div>
       ) : (
-        <div style={{ background: colors.surface, borderRadius: radius.lg, padding: space.lg, textAlign: 'center', color: colors.ink4, fontSize: fontSize.subhead }}>
-          No hay sesión cargada todavía. Generá tu plan desde la pestaña Plan.
+        <div style={{ background: colors.surface, borderRadius: radius.lg, padding: space.lg, textAlign: 'center' }}>
+          <div style={{ fontSize: fontSize.headline, fontWeight: fontWeight.semibold, color: colors.ink, marginBottom: space.xs }}>Hoy toca descanso</div>
+          <p style={{ fontSize: fontSize.subhead, color: colors.ink4, margin: 0 }}>El descanso también entrena: es cuando el cuerpo asimila la carga. Si igual querés moverte, en Plan podés mover una sesión a hoy.</p>
         </div>
       )}
+    </div>
+  );
+}
+
+function Aviso({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ background: colors.surface, borderRadius: radius.lg, padding: space.lg, textAlign: 'center', color: colors.ink3, fontSize: fontSize.subhead }}>
+      {children}
     </div>
   );
 }
