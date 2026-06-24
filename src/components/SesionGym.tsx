@@ -150,6 +150,11 @@ export function SesionGym({ dia, userId, planWeekId, mantenerCargas = false, onC
                   ))}
                 </ul>
               )}
+              <a
+                href={`https://www.google.com/search?q=${encodeURIComponent(ef.variante_nombre + ' ejercicio técnica')}`}
+                target="_blank" rel="noopener noreferrer"
+                style={{ display: 'inline-block', marginTop: space.sm, fontSize: fontSize.footnote, color: colors.greenInk, fontWeight: fontWeight.medium, textDecoration: 'none' }}
+              >🔍 Ver en Google</a>
               {tieneAlts && (
                 <SwapControl e={e} ef={ef} abierto={swapAbierto === e.variante_id} swapped={swapped}
                   onToggle={() => setSwapAbierto(swapAbierto === e.variante_id ? null : e.variante_id)}
