@@ -2,7 +2,7 @@
 // Módulo PURO: recibe perfil + catálogo + plantillas y devuelve una rutina.
 // Sin IA, sin base de datos, sin red. Toda la I/O vive en index.ts.
 
-export const ENGINE_VERSION = '0.4.0';
+export const ENGINE_VERSION = '0.5.0';
 
 // ---------- Tipos ----------
 export type Equipo = 'casa' | 'basico' | 'completo';
@@ -38,9 +38,12 @@ export interface Perfil {
   dias_disponibles: number; minutos_por_sesion?: number;
   equipo: Equipo; lesiones?: Lesion[];
 }
+export interface Alternativa {
+  variante_id: string; variante_nombre: string; descripcion: string; claves: string[];
+}
 export interface Ejercicio {
   slot_id: string; slot_nombre: string; variante_id: string; variante_nombre: string;
-  descripcion: string; claves: string[]; dosis?: Dosis;
+  descripcion: string; claves: string[]; dosis?: Dosis; alternativas?: Alternativa[];
 }
 export interface BloqueAerobico {
   variante_id: string; variante_nombre: string; descripcion: string; claves: string[];
@@ -100,7 +103,9 @@ function escalarDosis(dosisBase: Dosis, banda: BandaEdad): Dosis {
 }
 
 // ---------- Capas 4 y 5: elegir variante + vetar por lesión ----------
-function elegirVariante(slot: Slot, perfil: Perfil, techo: Impacto): Variante | null {
+// Candidatas válidas para el slot, ordenadas por preferencia (mejor primero).
+// La primera es la prescrita; las siguientes son alternativas del MISMO patrón que pasan los mismos filtros.
+function variantesOrdenadas(slot: Slot, perfil: Perfil, techo: Impacto): Variante[] {
   const equ = NIVEL_EQUIPO[perfil.equipo];
   const niv = NIVEL[perfil.nivel];
   const lesiones = perfil.lesiones || [];
@@ -110,12 +115,11 @@ function elegirVariante(slot: Slot, perfil: Perfil, techo: Impacto): Variante | 
     IMPACTO[v.impacto] <= IMPACTO[techo] &&
     !v.contraindicaciones.some((c) => lesiones.includes(c)),
   );
-  if (candidatas.length === 0) return null;
   candidatas.sort((a, b) =>
     (NIVEL_EQUIPO[b.nivel_equipo] - NIVEL_EQUIPO[a.nivel_equipo]) ||
     (NIVEL[b.nivel_minimo] - NIVEL[a.nivel_minimo]),
   );
-  return candidatas[0];
+  return candidatas;
 }
 
 // ---------- Capa 2: corte por días ----------
@@ -147,20 +151,22 @@ function generarGeneral(perfil: Perfil, catalogo: Catalogo, plantillas: Plantill
 
   const seleccion = cortePorDias(plantilla.slots, catalogo, D);
 
-  const preparados: { slot_id: string; slot_nombre: string; variante: Variante; dosis: Dosis; frecuencia: number }[] = [];
+  const preparados: { slot_id: string; slot_nombre: string; variante: Variante; alternativas: Variante[]; dosis: Dosis; frecuencia: number }[] = [];
   for (const s of seleccion) {
     const def = slotDef(catalogo, s.slot_id);
     if (!def) continue;
     const techo = techoImpacto(def, banda, imc);
-    const variante = elegirVariante(def, perfil, techo);
-    if (!variante) {
+    const vs = variantesOrdenadas(def, perfil, techo);
+    if (vs.length === 0) {
       const nivelAviso = def.innegociable ? 'ALTA' : 'info';
       advertencias.push(`[${nivelAviso}] Slot "${def.nombre}" sin variante válida (equipo/nivel/impacto/lesión) -> se omite.`);
       continue;
     }
+    const variante = vs[0];
+    const alternativas = vs.slice(1, 3);
     const dosis = escalarDosis(s.dosis_base, banda);
     const frec = clamp((s.dosis_base.frecuencia_semanal || 1) + banda.ajuste_frecuencia, 1, D);
-    preparados.push({ slot_id: s.slot_id, slot_nombre: def.nombre, variante, dosis, frecuencia: frec });
+    preparados.push({ slot_id: s.slot_id, slot_nombre: def.nombre, variante, alternativas, dosis, frecuencia: frec });
   }
 
   const dias: DiaRutina[] = Array.from({ length: D }, (_, i) => ({ dia_numero: i + 1, ejercicios: [] }));
@@ -171,6 +177,10 @@ function generarGeneral(perfil: Perfil, catalogo: Catalogo, plantillas: Plantill
         slot_id: p.slot_id, slot_nombre: p.slot_nombre,
         variante_id: p.variante.id, variante_nombre: p.variante.nombre,
         descripcion: p.variante.descripcion || '', claves: p.variante.claves || [], dosis: p.dosis,
+        alternativas: p.alternativas.map((a) => ({
+          variante_id: a.id, variante_nombre: a.nombre,
+          descripcion: a.descripcion || '', claves: a.claves || [],
+        })),
       });
     }
   }

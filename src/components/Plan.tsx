@@ -2,60 +2,37 @@
 import { useState } from 'react';
 import { colors, fontFamily, fontSize, fontWeight, space, radius } from '../lib/tokens';
 import { Button } from './ui';
-import { useGenerarPlan, usePlanEdits, useRegistrarEdit, useSesiones, hoyLocal } from '../lib/queries';
+import { useGenerarPlan, usePlanEdits, useRegistrarEdit, useEliminarEdit, useRestablecerSemana, useSesiones, hoyLocal } from '../lib/queries';
 import { semanaEfectiva, nombreDow, type DiaSemana } from '../lib/semana';
 import { DiaSheet } from './DiaSheet';
+import { BloqueStrip } from './BloqueStrip';
 
-// Resumen legible de la dosis según su forma.
-export function resumenDosis(d: any): string {
-  if (!d) return '';
-  const rpe = typeof d.rpe === 'number' ? ` · RPE ${d.rpe}` : '';
-  if (typeof d.series === 'number' && typeof d.reps_min === 'number') return `${d.series}×${d.reps_min}-${d.reps_max}${rpe}`;
-  if (typeof d.series === 'number' && typeof d.duracion_seg === 'number') return `${d.series}×${d.duracion_seg}s${rpe}`;
-  if (d.tipo === 'acondicionamiento' && typeof d.duracion_min === 'number') return `${d.duracion_min} min${rpe}`;
-  if (typeof d.series === 'number') return `${d.series} series${rpe}`;
-  return '';
-}
-
-export function DiaCard({ dia }: { dia: any }) {
-  const esCircuito = dia.formato === 'circuito';
-  return (
-    <div style={{ background: colors.surface, borderRadius: radius.lg, padding: space.md, marginBottom: space.md }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: space.sm }}>
-        <h2 style={{ fontSize: fontSize.headline, fontWeight: fontWeight.semibold, color: colors.ink, margin: 0 }}>
-          {esCircuito ? 'Circuito (simulación)' : `Día ${dia.dia_numero}`}
-        </h2>
-        <span style={{ fontSize: fontSize.caption1, color: colors.ink4 }}>{dia.ejercicios.length} ejercicios</span>
-      </div>
-      {dia.ejercicios.map((e: any, i: number) => (
-        <div key={i} style={{ padding: `${space.sm}px 0`, borderTop: i === 0 ? 'none' : `1px solid ${colors.hairline}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: space.sm }}>
-            <span style={{ fontSize: fontSize.subhead, fontWeight: fontWeight.medium, color: colors.ink2 }}>{e.variante_nombre}</span>
-            <span style={{ fontSize: fontSize.footnote, color: colors.greenInk, fontWeight: fontWeight.medium, whiteSpace: 'nowrap' }}>{resumenDosis(e.dosis)}</span>
-          </div>
-          <div style={{ fontSize: fontSize.caption1, color: colors.ink4 }}>{e.slot_nombre}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
+// resumenDosis y DiaCard viven en ./DiaCard (reusados por la hoja del día). Se re-exportan para compatibilidad.
+export { resumenDosis, DiaCard } from './DiaCard';
 
 const ETIQUETA: Record<string, string> = { gym: 'Gimnasio', moto: 'Moto', simulacion: 'Simulación', descanso: 'Descanso' };
 
-export function Plan({ userId, rutina, semanaInicio, planWeekId, onEmpezar }: {
-  userId: string; rutina: any; semanaInicio: string; planWeekId: string | null; onEmpezar: (dia: any) => void;
+export function Plan({ userId, rutina, semanaInicio, planWeekId, cicloSemana, onEmpezar }: {
+  userId: string; rutina: any; semanaInicio: string; planWeekId: string | null; cicloSemana: number | null; onEmpezar: (dia: any) => void;
 }) {
   const generar = useGenerarPlan(userId);
   const { data: edits } = usePlanEdits(userId, planWeekId);
   const { data: sesiones } = useSesiones(userId);
   const registrarEdit = useRegistrarEdit(userId);
+  const eliminar = useEliminarEdit();
+  const restablecer = useRestablecerSemana();
   const [sel, setSel] = useState<DiaSemana | null>(null);
+
+  const editsList = edits ?? [];
+  const ultimo = editsList[editsList.length - 1];
+  const deshacerUltimo = () => { if (ultimo && planWeekId) eliminar.mutate({ id: ultimo.id, plan_week_id: planWeekId }); };
+  const restablecerSemana = () => { if (planWeekId) restablecer.mutate(planWeekId); };
 
   const dias: any[] = rutina?.dias ?? [];
   const advertencias: string[] = rutina?.advertencias ?? [];
   const semana = semanaEfectiva({
     semanaInicio, dias,
-    edits: (edits ?? []).map((e) => ({ fecha: e.fecha, accion: e.accion, payload: e.payload, created_at: e.created_at })),
+    edits: editsList.map((e) => ({ fecha: e.fecha, accion: e.accion, payload: e.payload, created_at: e.created_at })),
     sesiones: (sesiones ?? []).map((s) => ({ fecha: s.fecha, tipo: s.tipo, carga: s.carga })),
     hoy: hoyLocal(),
   });
@@ -68,6 +45,22 @@ export function Plan({ userId, rutina, semanaInicio, planWeekId, onEmpezar }: {
     <div style={{ fontFamily, maxWidth: 480, width: '100%', margin: '0 auto', padding: space.lg, boxSizing: 'border-box' }}>
       <p style={{ fontSize: fontSize.footnote, color: colors.ink4, textTransform: 'uppercase', letterSpacing: 0.5, margin: 0 }}>Tu semana</p>
       <h1 style={{ fontSize: fontSize.title1, fontWeight: fontWeight.bold, color: colors.ink, margin: `${space.xs}px 0 ${space.lg}px` }}>Plan</h1>
+
+      <BloqueStrip cicloSemana={cicloSemana} />
+
+      {editsList.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: space.md, marginBottom: space.lg, fontSize: fontSize.footnote, flexWrap: 'wrap' }}>
+          <span style={{ color: colors.ink4 }}>{editsList.length} {editsList.length === 1 ? 'cambio' : 'cambios'} esta semana</span>
+          <button onClick={deshacerUltimo} disabled={eliminar.isPending}
+            style={{ background: 'none', border: 'none', padding: 0, fontFamily, fontSize: fontSize.footnote, fontWeight: fontWeight.semibold, color: colors.greenInk, cursor: 'pointer' }}>
+            Deshacer último
+          </button>
+          <button onClick={restablecerSemana} disabled={restablecer.isPending}
+            style={{ background: 'none', border: 'none', padding: 0, fontFamily, fontSize: fontSize.footnote, fontWeight: fontWeight.semibold, color: colors.ink3, cursor: 'pointer' }}>
+            Restablecer
+          </button>
+        </div>
+      )}
 
       <div style={{ marginBottom: space.lg }}>
         {semana.map((d) => {

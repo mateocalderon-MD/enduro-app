@@ -1,9 +1,10 @@
-// src/components/Hoy.tsx — Pestaña Hoy: qué toca HOY (según la semana efectiva) + carga real.
+// src/components/Hoy.tsx — Pestaña Hoy: el foco del día (nunca un callejón sin salida) + tu progreso real.
 import { colors, fontFamily, fontSize, fontWeight, space, radius } from '../lib/tokens';
 import { Button } from './ui';
-import { DiaCard } from './Plan';
-import { useSesiones, usePlanEdits, resumenSemana, hoyLocal } from '../lib/queries';
-import { semanaEfectiva, diaDeHoy } from '../lib/semana';
+import { DiaCard } from './DiaCard';
+import { useSesiones, usePlanEdits, hoyLocal } from '../lib/queries';
+import { semanaEfectiva, diaDeHoy, nombreDow, type DiaSemana } from '../lib/semana';
+import { progresoLifts, semanasEntrenadas } from '../lib/progresion';
 
 export function Hoy({ userId, rutina, semanaInicio, planWeekId, onEmpezar, onRegistrarMoto }: {
   userId: string; rutina: any; semanaInicio: string; planWeekId: string | null;
@@ -11,8 +12,6 @@ export function Hoy({ userId, rutina, semanaInicio, planWeekId, onEmpezar, onReg
 }) {
   const { data: sesiones } = useSesiones(userId);
   const { data: edits } = usePlanEdits(userId, planWeekId);
-  const r = resumenSemana(sesiones ?? []);
-  const pctGym = r.total > 0 ? (r.gym / r.total) * 100 : 0;
 
   const semana = semanaEfectiva({
     semanaInicio, dias: rutina?.dias ?? [],
@@ -22,52 +21,101 @@ export function Hoy({ userId, rutina, semanaInicio, planWeekId, onEmpezar, onReg
   });
   const hoy = diaDeHoy(semana);
 
+  // Próxima sesión de gym después de hoy (para mirar adelante en estados "ya está" / descanso).
+  const idxHoy = semana.findIndex((d) => d.esHoy);
+  const proxima = idxHoy >= 0 ? semana.slice(idxHoy + 1).find((d) => d.tipo === 'gym' && !d.hecho) : undefined;
+
+  // Momentum (progreso real).
+  const lifts = progresoLifts(sesiones ?? []);
+  const semEntren = semanasEntrenadas(sesiones ?? []);
+  const totalSes = (sesiones ?? []).length;
+
   return (
     <div style={{ fontFamily, maxWidth: 480, width: '100%', margin: '0 auto', padding: space.lg, boxSizing: 'border-box' }}>
       <p style={{ fontSize: fontSize.footnote, color: colors.ink4, textTransform: 'uppercase', letterSpacing: 0.5, margin: 0 }}>Hoy</p>
       <h1 style={{ fontSize: fontSize.title1, fontWeight: fontWeight.bold, color: colors.ink, margin: `${space.xs}px 0 ${space.lg}px` }}>Tu día</h1>
 
-      {/* Carga de la semana — real */}
-      <div style={{ background: colors.surface, borderRadius: radius.lg, padding: space.md, marginBottom: space.lg }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: space.sm }}>
-          <span style={{ fontSize: fontSize.subhead, fontWeight: fontWeight.semibold, color: colors.ink2 }}>Carga de la semana</span>
-          <span style={{ fontSize: fontSize.subhead, fontWeight: fontWeight.semibold, color: colors.ink, fontVariantNumeric: 'tabular-nums' }}>{r.total}</span>
-        </div>
-        {r.total > 0 ? (
-          <>
-            <div style={{ display: 'flex', height: 8, borderRadius: radius.full, overflow: 'hidden', background: colors.bg }}>
-              <div style={{ width: `${pctGym}%`, background: colors.greenInk }} />
-              <div style={{ width: `${100 - pctGym}%`, background: colors.coralInk }} />
-            </div>
-            <p style={{ fontSize: fontSize.footnote, color: colors.ink4, margin: `${space.sm}px 0 0` }}>Gimnasio {r.gym} · Moto {r.moto} · {r.sesiones} {r.sesiones === 1 ? 'sesión' : 'sesiones'}</p>
-          </>
-        ) : (
-          <p style={{ fontSize: fontSize.footnote, color: colors.ink4, margin: 0 }}>Cuando registres gimnasio y moto, tu carga aparece acá.</p>
-        )}
-      </div>
-
-      {/* Qué toca hoy */}
+      {/* Foco del día */}
       {!hoy ? (
         <Aviso>No hay plan para esta semana. Generalo desde la pestaña Plan.</Aviso>
-      ) : hoy.hecho ? (
-        <Aviso>Ya entrenaste hoy. Carga del día: <strong>{hoy.cargaHecha}</strong>. Si querés sumar algo más, está perfecto igual.</Aviso>
-      ) : hoy.tipo === 'gym' && hoy.dia ? (
+      ) : hoy.tipo === 'gym' && hoy.dia && !hoy.hecho ? (
         <>
           <DiaCard dia={hoy.dia} />
           <Button full onClick={() => onEmpezar(hoy.dia)}>Empezar sesión</Button>
         </>
-      ) : hoy.tipo === 'moto' || hoy.tipo === 'simulacion' ? (
-        <div style={{ background: colors.coralSoft, borderRadius: radius.lg, padding: space.lg, marginBottom: space.md, textAlign: 'center' }}>
+      ) : (hoy.tipo === 'moto' || hoy.tipo === 'simulacion') && !hoy.hecho ? (
+        <div style={{ background: colors.coralSoft, borderRadius: radius.lg, padding: space.lg, textAlign: 'center' }}>
           <div style={{ fontSize: fontSize.headline, fontWeight: fontWeight.semibold, color: colors.coralInk, marginBottom: space.xs }}>Hoy toca moto</div>
           <p style={{ fontSize: fontSize.subhead, color: colors.coralInk, margin: `0 0 ${space.md}px` }}>Andá a andar. Cuando vuelvas, registrá la salida para que cuente tu carga.</p>
           <Button variant="moto" full onClick={onRegistrarMoto}>Registrar salida</Button>
         </div>
       ) : (
-        <div style={{ background: colors.surface, borderRadius: radius.lg, padding: space.lg, textAlign: 'center' }}>
-          <div style={{ fontSize: fontSize.headline, fontWeight: fontWeight.semibold, color: colors.ink, marginBottom: space.xs }}>Hoy toca descanso</div>
-          <p style={{ fontSize: fontSize.subhead, color: colors.ink4, margin: 0 }}>El descanso también entrena: es cuando el cuerpo asimila la carga. Si igual querés moverte, en Plan podés mover una sesión a hoy.</p>
+        <ForwardBlock hoy={hoy} proxima={proxima} onRegistrarMoto={onRegistrarMoto} />
+      )}
+
+      {/* Momentum: tu progreso real */}
+      {totalSes > 0 && (
+        <div style={{ marginTop: space.lg }}>
+          <p style={{ fontSize: fontSize.footnote, color: colors.ink4, textTransform: 'uppercase', letterSpacing: 0.5, margin: `0 0 ${space.sm}px` }}>Tu progreso</p>
+          <div style={{ background: colors.surface, borderRadius: radius.lg, padding: space.md }}>
+            {lifts.length > 0 ? (
+              <div>
+                {lifts.slice(0, 3).map((l) => (
+                  <div key={l.variante_id} style={{ display: 'flex', justifyContent: 'space-between', gap: space.sm, padding: '4px 0' }}>
+                    <span style={{ fontSize: fontSize.subhead, color: colors.ink2, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.nombre}</span>
+                    <span style={{ fontSize: fontSize.subhead, fontWeight: fontWeight.semibold, color: colors.greenInk, whiteSpace: 'nowrap' }}>{l.primero} → {l.ultimo} kg ↑</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: fontSize.footnote, color: colors.ink4, margin: 0 }}>Registrá tus pesos un par de veces y acá vas a ver cómo suben.</p>
+            )}
+            <div style={{
+              borderTop: lifts.length > 0 ? `1px solid ${colors.hairline}` : 'none',
+              marginTop: lifts.length > 0 ? space.sm : 0, paddingTop: lifts.length > 0 ? space.sm : 0,
+              fontSize: fontSize.footnote, color: colors.ink4,
+            }}>
+              {semEntren} {semEntren === 1 ? 'semana' : 'semanas'} entrenando · {totalSes} {totalSes === 1 ? 'sesión' : 'sesiones'}
+            </div>
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Estado "ya entrenaste hoy" o "descanso": en vez de un callejón sin salida, mira para adelante.
+function ForwardBlock({ hoy, proxima, onRegistrarMoto }: {
+  hoy: DiaSemana; proxima: DiaSemana | undefined; onRegistrarMoto: () => void;
+}) {
+  const hecho = hoy.hecho;
+  return (
+    <div style={{ background: colors.surface, borderRadius: radius.lg, padding: space.lg, textAlign: 'center' }}>
+      <div style={{ fontSize: fontSize.headline, fontWeight: fontWeight.semibold, color: hecho ? colors.greenInk : colors.ink, marginBottom: space.xs }}>
+        {hecho ? 'Listo por hoy ✓' : 'Hoy toca descanso'}
+      </div>
+      <p style={{ fontSize: fontSize.subhead, color: colors.ink4, margin: `0 0 ${space.md}px` }}>
+        {hecho
+          ? `Carga del día: ${hoy.cargaHecha}. El descanso es parte del plan.`
+          : 'El descanso también entrena: es cuando el cuerpo asimila la carga.'}
+      </p>
+      {proxima ? (
+        <div style={{ background: colors.bg, borderRadius: radius.md, padding: space.md, marginBottom: space.md }}>
+          <div style={{ fontSize: fontSize.caption1, color: colors.ink4, marginBottom: 2 }}>Próxima sesión</div>
+          <div style={{ fontSize: fontSize.subhead, fontWeight: fontWeight.semibold, color: colors.ink }}>
+            Día {proxima.dia?.dia_numero} · {nombreDow(proxima.dow)} {proxima.fecha.slice(8)}
+          </div>
+        </div>
+      ) : (
+        <p style={{ fontSize: fontSize.footnote, color: colors.ink4, margin: `0 0 ${space.md}px` }}>No quedan sesiones de gym esta semana.</p>
+      )}
+      <button onClick={onRegistrarMoto} style={{
+        width: '100%', fontFamily, fontSize: fontSize.subhead, fontWeight: fontWeight.semibold,
+        color: colors.coralInk, background: colors.coralSoft, border: 'none', borderRadius: radius.md,
+        padding: `${space.md}px`, cursor: 'pointer',
+      }}>
+        Registré una salida de moto
+      </button>
     </div>
   );
 }

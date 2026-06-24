@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { colors, fontFamily, fontSize, fontWeight, space, radius } from '../lib/tokens';
 import { nombreDow, type DiaSemana } from '../lib/semana';
+import { DiaCard } from './DiaCard';
 
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 function fechaLarga(iso: string): string {
@@ -85,6 +86,11 @@ export function DiaSheet({ dia, dias, semana, onCerrar, onEmpezar, onSwapMoto, o
   } else if (dia.tipo === 'gym') {
     cuerpo = (
       <>
+        {dia.dia && (
+          <div style={{ background: colors.surface, borderRadius: radius.lg, padding: space.md, marginBottom: space.md }}>
+            <DiaCard dia={dia.dia} plano />
+          </div>
+        )}
         {dia.dia && <Item label="Empezar sesión" color={colors.greenInk} onClick={() => { onEmpezar(dia.dia); cerrar(); }} />}
         <Item label="Cambié por moto" sub="Hoy anduviste: el gimnasio cede a la salida" color={colors.coralInk}
           onClick={() => { onSwapMoto(dia.fecha); cerrar(); }} />
@@ -113,6 +119,7 @@ export function DiaSheet({ dia, dias, semana, onCerrar, onEmpezar, onSwapMoto, o
       <div onClick={(e) => e.stopPropagation()} style={{
         width: '100%', maxWidth: 480, background: colors.bg, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
         padding: space.lg, boxSizing: 'border-box', paddingBottom: space.xl,
+        maxHeight: '85vh', overflowY: 'auto',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: space.md }}>
           <div style={{ fontSize: fontSize.headline, fontWeight: fontWeight.semibold, color: colors.ink }}>

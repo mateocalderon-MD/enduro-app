@@ -5,7 +5,7 @@ import { useSesiones, resumenSemana } from '../lib/queries';
 
 const DIAS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
-export function Progreso({ userId }: { userId: string }) {
+export function Progreso({ userId, onEditarPerfil }: { userId: string; onEditarPerfil: () => void }) {
   const { data: sesiones, isLoading } = useSesiones(userId);
   const r = resumenSemana(sesiones ?? []);
   const maxDia = Math.max(1, ...r.porDia);
@@ -55,8 +55,13 @@ export function Progreso({ userId }: { userId: string }) {
         </>
       )}
 
+      <button onClick={onEditarPerfil}
+        style={{ display: 'block', width: '100%', marginTop: space.lg, fontFamily, fontSize: fontSize.subhead, fontWeight: fontWeight.semibold, color: colors.greenInk, background: colors.greenSoft, border: 'none', borderRadius: radius.md, padding: `${space.md}px`, cursor: 'pointer' }}>
+        Editar objetivos
+      </button>
+
       <button onClick={() => supabase.auth.signOut()}
-        style={{ display: 'block', margin: `${space.lg}px auto 0`, fontFamily, fontSize: fontSize.footnote, color: colors.ink4, background: 'none', border: 'none', cursor: 'pointer' }}>
+        style={{ display: 'block', margin: `${space.md}px auto 0`, fontFamily, fontSize: fontSize.footnote, color: colors.ink4, background: 'none', border: 'none', cursor: 'pointer' }}>
         Cerrar sesión
       </button>
     </div>

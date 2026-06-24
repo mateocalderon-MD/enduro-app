@@ -8,6 +8,7 @@ import { Moto } from './Moto';
 import { Progreso } from './Progreso';
 import { SesionGym } from './SesionGym';
 import { RegistrarMoto } from './RegistrarMoto';
+import { EditarPerfil } from './EditarPerfil';
 import { Button } from './ui';
 import { usePlanWeek, useGenerarPlan, useSimularMoto, type PlanWeekRow } from '../lib/queries';
 
@@ -15,6 +16,7 @@ export function MainTabs({ userId }: { userId: string }) {
   const [tab, setTab] = useState<Tab>('hoy');
   const [sesionDia, setSesionDia] = useState<any | null>(null);
   const [registrarMoto, setRegistrarMoto] = useState(false);
+  const [editarPerfil, setEditarPerfil] = useState(false);
   const { data: planWeek, isLoading } = usePlanWeek(userId);
   const pw = planWeek as PlanWeekRow | null | undefined;
   const simular = useSimularMoto();
@@ -23,7 +25,8 @@ export function MainTabs({ userId }: { userId: string }) {
   });
 
   if (registrarMoto) return <RegistrarMoto userId={userId} onCerrar={() => setRegistrarMoto(false)} />;
-  if (sesionDia) return <SesionGym dia={sesionDia} userId={userId} planWeekId={pw?.id ?? null} onCerrar={() => setSesionDia(null)} />;
+  if (editarPerfil) return <EditarPerfil userId={userId} planWeekId={pw?.id ?? null} onCerrar={() => setEditarPerfil(false)} />;
+  if (sesionDia) return <SesionGym dia={sesionDia} userId={userId} planWeekId={pw?.id ?? null} mantenerCargas={(pw?.ciclo_semana ?? 0) === 4} onCerrar={() => setSesionDia(null)} />;
 
   const rutina = pw?.plan ?? null;
 
@@ -34,14 +37,14 @@ export function MainTabs({ userId }: { userId: string }) {
       onSimular={onSimular} simulando={simular.isPending}
       simularError={simular.isError ? String((simular.error as Error)?.message ?? simular.error) : null} />
   );
-  else if (tab === 'progreso') contenido = <Progreso userId={userId} />;
+  else if (tab === 'progreso') contenido = <Progreso userId={userId} onEditarPerfil={() => setEditarPerfil(true)} />;
   else if (!planWeek) contenido = <SinPlan userId={userId} />;
   else if (tab === 'hoy') contenido = (
     <Hoy userId={userId} rutina={rutina} semanaInicio={pw!.semana_inicio} planWeekId={pw?.id ?? null}
       onEmpezar={setSesionDia} onRegistrarMoto={() => setRegistrarMoto(true)} />
   );
   else contenido = (
-    <Plan userId={userId} rutina={rutina} semanaInicio={pw!.semana_inicio} planWeekId={pw?.id ?? null} onEmpezar={setSesionDia} />
+    <Plan userId={userId} rutina={rutina} semanaInicio={pw!.semana_inicio} planWeekId={pw?.id ?? null} cicloSemana={pw?.ciclo_semana ?? null} onEmpezar={setSesionDia} />
   );
 
   return (
