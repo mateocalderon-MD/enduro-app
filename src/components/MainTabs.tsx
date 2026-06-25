@@ -9,6 +9,8 @@ import { Progreso } from './Progreso';
 import { SesionGym } from './SesionGym';
 import { RegistrarMoto } from './RegistrarMoto';
 import { EditarPerfil } from './EditarPerfil';
+import { MenuUsuario } from './MenuUsuario';
+import { createPortal } from 'react-dom';
 import { Button } from './ui';
 import { usePlanWeek, useGenerarPlan, useSimularMoto, type PlanWeekRow } from '../lib/queries';
 
@@ -17,6 +19,7 @@ export function MainTabs({ userId }: { userId: string }) {
   const [sesionDia, setSesionDia] = useState<any | null>(null);
   const [registrarMoto, setRegistrarMoto] = useState(false);
   const [editarPerfil, setEditarPerfil] = useState(false);
+  const [menu, setMenu] = useState(false);
   const { data: planWeek, isLoading } = usePlanWeek(userId);
   const pw = planWeek as PlanWeekRow | null | undefined;
   const simular = useSimularMoto();
@@ -25,6 +28,7 @@ export function MainTabs({ userId }: { userId: string }) {
   });
 
   if (registrarMoto) return <RegistrarMoto userId={userId} onCerrar={() => setRegistrarMoto(false)} />;
+  if (menu) return <MenuUsuario userId={userId} onEditarPerfil={() => { setMenu(false); setEditarPerfil(true); }} onCerrar={() => setMenu(false)} />;
   if (editarPerfil) return <EditarPerfil userId={userId} planWeekId={pw?.id ?? null} onCerrar={() => setEditarPerfil(false)} />;
   if (sesionDia) return <SesionGym dia={sesionDia} userId={userId} planWeekId={pw?.id ?? null} mantenerCargas={(pw?.ciclo_semana ?? 0) === 4} onCerrar={() => setSesionDia(null)} />;
 
@@ -51,7 +55,24 @@ export function MainTabs({ userId }: { userId: string }) {
     <div style={{ fontFamily, minHeight: '100vh', background: colors.bg, paddingBottom: 80 }}>
       {contenido}
       <TabBar active={tab} onChange={setTab} />
+      <BotonMenu onClick={() => setMenu(true)} />
     </div>
+  );
+}
+
+// Botón flotante de cuenta, arriba a la derecha (vía portal, como la TabBar).
+function BotonMenu({ onClick }: { onClick: () => void }) {
+  return createPortal(
+    <button onClick={onClick} aria-label="Mi cuenta"
+      style={{ position: 'fixed', top: 'calc(env(safe-area-inset-top) + 10px)', right: 14, zIndex: 90,
+        width: 38, height: 38, borderRadius: radius.full, border: `1px solid ${colors.hairline}`,
+        background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+        color: colors.ink2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
+      </svg>
+    </button>,
+    document.body,
   );
 }
 

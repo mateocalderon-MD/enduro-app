@@ -1,0 +1,16 @@
+{
+  "name": "Enduro App — El gimnasio sirve a la moto",
+  "short_name": "Enduro App",
+  "description": "Tu entrenamiento de gimnasio y moto para enduro.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0FA37C",
+  "icons": [
+    { "src": "/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
+  ]
+}
